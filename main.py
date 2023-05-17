@@ -106,7 +106,8 @@ class initiator_class:
         self.key_size=size
 
 
-    
+    def signal_sender(pid,signal_number):
+        os.kill(pid,signal_number)
 
 if __name__=="__main__":
     num_keys=int(sys.argv[1])
