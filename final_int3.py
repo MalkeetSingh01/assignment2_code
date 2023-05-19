@@ -2,10 +2,13 @@ import base64
 import datetime
 import json
 import os
+import signal
 import sys
 from contextlib import contextmanager
 import logging
 import concurrent.futures
+import time
+from multiprocessing import Pipe
 
 logging.basicConfig(filename='log',level=logging.DEBUG,format='%(asctime)s:|:%(funcName)s:|:%(lineno)s:|:%(process)d:|:%(thread)d:|:%(threadName)s:||:%(message)s')
 
@@ -13,19 +16,27 @@ class initiator_class:
 
     key_size=int(8)
 
+    producer_index=0
+    consumer_index=0
+    
     def __init__(self,num_keys,file_path):
        self.seek=0
-       self.producer_index=0
-       self.consumer_index=0
        self.num_keys=num_keys
        self.buffer_unit=200
        self.file_path=file_path
        self.file_size=num_keys*8
-       self.buffer=bytearray(102400)
+       self.buffer=bytearray(1024)
+       signal.signal(signal.SIGUSR1, self.run)
 
     @classmethod
     def change_keysize(self,size)->None:
         self.key_size=size
+    
+    @classmethod
+    def signal_sender(cls,pid,signal_number):
+        msg=f'{pid},{signal_number}'
+        logging.debug(msg)
+        os.kill(pid,signal_number)
 
     def open_file(self,mode,action):
         try:
@@ -52,37 +63,57 @@ class initiator_class:
         # logging.debug(self.__dict__)
         
     def producer(self):
-        while(self.seek<self.file_size):   
+        while(self.seek<self.file_size):  
             data=self.open_file('rb','1')
             timestamp = datetime.datetime.now()
             buffer_data={
                 'data':data,
                 'timestamp':timestamp.strftime("%Y-%m-%d %H:%M:%S"),
                 'seek_value':self.seek,
-                'overrider':0
+                'overrider':0,
+                "index_producer":initiator_class.producer_index
             }
             self.seek+=initiator_class.key_size
             try:
-                start_index=int((self.consumer_index*self.buffer_unit)%1024)
+                start_index=initiator_class.producer_index*self.buffer_unit
+                start_index = 0 if start_index+self.buffer_unit > 1024 else start_index
                 end_index=start_index+self.buffer_unit
-                self.buffer[start_index:end_index]=json.dumps(buffer_data).encode()
-                # print(sys.getsizeof(json.dumps(buffer_data).encode()))
-                print(f'p---{self.buffer[start_index:end_index].decode()}')
-                self.producer_index+=1
+                json_string = self.buffer[start_index:end_index].decode()
+                print(json_string)
+                # if(json_string!=None):random_data=json.loads(json_string)
+                # print(type(random_data))
+                random1=0
+                if(random1!=None):
+                    print(start_index,end_index)
+                    self.buffer[start_index:end_index]=json.dumps(buffer_data).encode()
+                    # print(sys.getsizeof(json.dumps(buffer_data).encode()))
+                    print(f'p---{self.buffer[start_index:end_index].decode()}--')
+                    initiator_class.producer_index+=1
+                    print(initiator_class.consumer_index," ",initiator_class.producer_index)
+                    time.sleep(1)
             except Exception as e:
                 logging.debug(e)
         sys.exit(0)
 
     def consumer(self):
         while(True):
-            start_index=int((self.consumer_index*self.buffer_unit)%1024)
-            end_index=start_index+self.buffer_unit
-            data=self.buffer[start_index:end_index].decode()
-            print(f'c---{data}')
-            self.consumer_index+=1
-    # def verifier(self):
-    #     while(True):    
-    #         print("verrifer logging")
+            if(initiator_class.consumer_index<initiator_class.producer_index):
+                start_index=initiator_class.consumer_index*self.buffer_unit
+                start_index = [0 if start_index > 1024 else start_index]
+                end_index=start_index+self.buffer_unit
+                data=self.buffer[start_index:end_index].decode()
+                data['overrider']=1
+                self.buffer[start_index:end_index]=json.dumps(data).encode()
+                print(f'c---{data}')              
+                initiator_class.consumer_index+=1
+            # time.sleep(1)
+
+
+    def verifier(self):
+        # while(True):    
+        #     print("verrifer logging")
+        pass
+        
 
     def run(self):
         self.generator()
@@ -94,7 +125,10 @@ class initiator_class:
             if future1.done():
                 print("future1 done")
                 print(new_process.buffer[0:1024].decode())
+            if future2.done():
+                print("future12 done")
     
+
 if __name__=="__main__":
     num_keys=int(sys.argv[1])
     file_path="./key_list"
