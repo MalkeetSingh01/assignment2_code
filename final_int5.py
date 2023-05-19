@@ -103,9 +103,9 @@ class initiator_class:
         while(self.seek<self.file_size):  
             data=self.open_file('rb','1')
             timestamp = datetime.datetime.now()
-            if(self.producer_index%4==0):
-                data=initiator_class.raiseException()
-                print("-"*30,"raised exception--",f'file_seek-{self.seek}')
+            # if(self.producer_index%4==0):
+            #     data=initiator_class.raiseException()
+            #     print("-"*30,"raised exception--",f'file_seek-{self.seek}')
             # time.sleep(2)
             self.producer_index=0 if self.producer_index >= self.max_index else self.producer_index
             buffer_data={
@@ -150,18 +150,18 @@ class initiator_class:
     def verifier(self,random):
         print('-------verifier---------')
         try:
-            with open(self.file_path,'r') as file:
-                print('-------verifier_file_opener---------')
+            with open(self.file_path,'rb') as file:
+                # print('-------verifier_file_opener---------')
                 file.seek(int(random.get('seek_value')))
                 data=file.read(self.key_size)
                 data=base64.b64encode(data).decode('utf-8')
-                print(data)
+                # print(data)
                 if(data!=random.get('data')): 
                     raise CustomError("Corrupted data")
                 with open('./consumed_keys','a') as f:
-                    f.write(random['data'])
+                    f.write(random.get('data'))
         except CustomError as e:
-            logging.debug(e,self.producer_index)
+            logging.debug(str(e),self.producer_index)
         
 
     def run(self):
