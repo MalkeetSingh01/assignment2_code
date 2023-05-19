@@ -9,11 +9,16 @@ from contextlib import contextmanager
 import logging
 import concurrent.futures
 import time
-from multiprocessing import Array
+from multiprocessing import Array,Value
 
 
 
 logging.basicConfig(filename='log',level=logging.DEBUG,format='%(asctime)s:|:%(funcName)s:|:%(lineno)s:|:%(process)d:|:%(thread)d:|:%(threadName)s:||:%(message)s')
+
+class MyData:
+    def __init__(self) -> None:
+        for i in range(10):
+            self[i]=None
 
 class initiator_class:
 
@@ -29,7 +34,9 @@ class initiator_class:
        self.producer_index=0
        self.consumer_index=0
        self.verifier_index=0
-       self.buffer_unit=128
+       self.buffer_unit=125
+       self.max_index=10
+       self.shared_buffer=Value(MyData)
 
     @classmethod
     def change_keysize(self,size)->None:
@@ -65,16 +72,18 @@ class initiator_class:
         self.open_file('wb','2')
 
     def put_data(self,index, data):
+        print(data,sys.getsizeof(json.dumps(data)))
         start_index = index*self.buffer_unit
         end_index = start_index +self.buffer_unit
-        encoded_data = json.dumps(data).encode()
-        self.shared_buffer[start_index:end_index] = encoded_data[:self.buffer_unit]
+        self.shared_buffer[start_index:end_index] = json.dumps(data).encode()
+        print("put----",self.shared_buffer[start_index:end_index])
 
     def get_data(self,index):
         start_index = index *self.buffer_unit
         end_index = start_index +self.buffer_unit
         data = self.shared_buffer[start_index:end_index]
-        return json.loads(data)
+        print(data.decode())
+        return data.decode()
         
     def producer(self):
         print('---producer---')
@@ -84,19 +93,19 @@ class initiator_class:
             buffer_data={
                 'data':data,
                 'timestamp':timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                'seek_value':self.seek,
+                # 'seek_value':self.seek,
                 'overrider':0,
-                "index_producer":self.producer_index
+                # "index_producer":self.producer_index
             }
+            # print(json.dumps(buffer_data).encode()," ",json.dumps(buffer_data)," ",sys.getsizeof(json.dumps(buffer_data).encode()))
             time.sleep(1)
             self.seek+=initiator_class.key_size
             random=self.get_data(self.producer_index)
-            print(f'p---{random}')
+            print(f'p---{random}',sys.getsizeof(random),type(random))
             try:
-                if(random==None or int(random['overrider'])==1):
-                    self.producer_index=0 if self.producer_index*self.buffer_unit+ self.buffer_unit>1024 else self.producer_index
-                    self.put_data(self.producer_index,buffer_data)
-                    self.producer_index+=1
+                self.producer_index=0 if self.producer_index*self.buffer_unit+ self.buffer_unit>1024 else self.producer_index
+                self.put_data(self.producer_index,buffer_data)
+                self.producer_index+=1
             except Exception as e:
                 logging.debug(e)
         sys.exit(0)
@@ -105,7 +114,8 @@ class initiator_class:
         print('---consumer---')
         time.sleep(1)
         while(True):
-            random=self.get_data(self.consumer_index)
+            random=json.loads(self.get_data(self.consumer_index))
+            print(random," ",json.dumps(buffer_data)," ",sys.getsizeof(random))
             try:
                 if(random!=None or int(random['overrider'])==0):
                     random['overrider']=1
@@ -126,13 +136,13 @@ class initiator_class:
     def run(self):
         self.generator()
         proces_producer=multiprocessing.Process(target=self.producer)
-        proces_consumer=multiprocessing.Process(target=self.consumer)
+        # proces_consumer=multiprocessing.Process(target=self.consumer)
 
         proces_producer.start()
         proces_consumer.start()
 
         proces_producer.join()
-        proces_consumer.join()
+        # proces_consumer.join()
 
 
 
