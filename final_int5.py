@@ -10,15 +10,18 @@ from multiprocessing import Manager,Lock
 import time
 
 
-
+#logging the info and errors here#
 logging.basicConfig(filename='log',level=logging.DEBUG,format='%(asctime)s:|:%(funcName)s:|:%(lineno)s:|:%(process)d:|:%(thread)d:|:%(threadName)s:||:%(message)s')
 
+#raising custom exceptions#
 class CustomError(Exception):
     pass
 
+#creting a class to intialise a list of manager values#
 class MyData:
     def __init__(self) -> None:
         self.value=[None]*10
+
 
 class initiator_class:
 
@@ -43,12 +46,15 @@ class initiator_class:
     def change_keysize(self,size)->None:
         self.key_size=size
     
+
+    #watchdog process to maintain signals acroose the env#
     @classmethod
     def signal_sender(cls,pid,signal_number):
         msg=f'{pid},{signal_number}'
         logging.debug(msg)
         os.kill(pid,signal_number)
 
+    #function to clear files so as to not override the previous keys#
     @classmethod
     def clear_files(cls):
         with open('decripted_keys','w') as f1:
@@ -56,12 +62,14 @@ class initiator_class:
         with open('consumed_keys' ,'w') as f1:
             f1.truncate(0)
 
+    #A custom exception raises that will coroupt data in intervals to check workigng#
     @classmethod
     def raiseException(cls):
         corruption=os.urandom(initiator_class.key_size)
         corruption=base64.b64encode(corruption).decode('utf-8')
         return corruption
 
+    #context manager to open file in different modes#
     def open_file(self,mode,action):
         try:
             with open(self.file_path,mode) as file:
@@ -103,11 +111,18 @@ class initiator_class:
         while(self.seek<self.file_size):  
             data=self.open_file('rb','1')
             timestamp = datetime.datetime.now()
-            # if(self.producer_index%4==0):
+
+            #the code below to call corruption raiser at regular intervals#
+
+            # if(self.producer_index%5==0):
             #     data=initiator_class.raiseException()
             #     print("-"*30,"raised exception--",f'file_seek-{self.seek}')
             # time.sleep(2)
+
+            #doing a modulous operation to maintian circular buffer like structure#
             self.producer_index=0 if self.producer_index >= self.max_index else self.producer_index
+
+            #buffer data containg diff fields I have also added loacal indexing and seek value for verifier process#
             buffer_data={
                 'data':data,
                 'timestamp':timestamp.strftime("%Y-%m-%d %H:%M:%S"),
@@ -119,6 +134,8 @@ class initiator_class:
             try:
                 random=self.get_data(self.producer_index)
                 # print(f'ran--{random}')
+
+                #checking if the entry point is empty or the data has been consumed or not
                 if(random==None or random.get('overrider')==True):
                     # print(random)
                     print(f'p---{buffer_data}')
@@ -142,6 +159,7 @@ class initiator_class:
                     print(f'c---{random}')
                     self.put_data(self.consumer_index,random)
                     self.consumer_index+=1
+                    #calling verifier
                     self.verifier(random)
             except Exception as e:
                 logging.debug(e)
